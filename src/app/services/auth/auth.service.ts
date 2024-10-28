@@ -1,40 +1,46 @@
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, Observable, of } from 'rxjs';
-
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { BehaviorSubject, Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { FormsModule } from '@angular/forms';
 @Injectable({
   providedIn: 'root'
 })
 export class AuthService {
-  private isLoggedInSubject = new BehaviorSubject<boolean>(false);
-  isLoggedIn$ = this.isLoggedInSubject.asObservable();
+  private currentUserSubject: BehaviorSubject<any>;
+  public currentUser: Observable<any>;
 
-  constructor() {
-    const token = localStorage.getItem('token');
-    if (token) {
-      this.isLoggedInSubject.next(true);
-    }
+  constructor(private http: HttpClient) {
+    const storedUser = localStorage.getItem('currentUser');
+    this.currentUserSubject = new BehaviorSubject<any>(storedUser ? JSON.parse(storedUser) : null);
+    this.currentUser = this.currentUserSubject.asObservable();
   }
-
-  login(username: string, password: string): Observable<boolean> {
-    // 這裡應該實現實際的登入邏輯，與後端 API 進行通信
-    // 為了示例，我們假設登入總是成功
-    localStorage.setItem('token', 'fake-jwt-token');
-    this.isLoggedInSubject.next(true);
-    return of(true);
+  public get currentUserValue() {
+    return this.currentUserSubject.value;
   }
-
+  login(username: string, password: string) {
+    return this.http.post<any>(`http://localhost:8000/login`, { username, password })
+      .pipe(map(user => {
+        // store user details and jwt token in local storage to keep user logged in between page refreshes
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        this.currentUserSubject.next(user);
+        return user;
+      }));
+  }
   logout() {
-    localStorage.removeItem('token');
-    this.isLoggedInSubject.next(false);
+    localStorage.removeItem('currentUser');
+    this.currentUserSubject.next(null);
   }
-
-  getCurrentUser(): Observable<any> {
-    // 這裡應該從後端獲取當前用戶信息
-    return of({name: '測試用戶', email: 'test@example.com'});
+  getProfile() {
+    const headers = new HttpHeaders({
+      'Authorization': `Bearer ${this.currentUserValue.access_token}`
+    });
+    return this.http.get<any>(`http://localhost:8000/users/me`, { headers });
   }
-
-  updateProfile(user: any): Observable<boolean> {
-    // 這裡應該向後端發送更新請求
-    return of(true);
+  updateProfile(profileData: any) {
+    const headers = new HttpHeaders({
+      'Authorization': `Bearer ${this.currentUserValue.access_token}`
+    });
+    return this.http.put<any>(`http://localhost:8000/users/me`, profileData, { headers });
   }
 }
